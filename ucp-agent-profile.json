@@ -1,6 +1,13 @@
 {
   "ucp": {
     "version": "2026-08-25",
-    "agent_id": "sec-research"
+    "services": {
+      "dev.ucp.shopping": [
+        {
+          "version": "2026-08-25",
+          "transport": "mcp"
+        }
+      ]
+    }
   }
 }
