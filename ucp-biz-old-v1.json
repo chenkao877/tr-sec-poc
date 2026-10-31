@@ -1,0 +1,18 @@
+{
+  "ucp.version": "2026-08-25",
+  "agent": {
+    "name": "sec-test",
+    "version": "1.0"
+  },
+  "services": [
+    {
+      "type": "dev.ucp.shopping",
+      "url": "https://one-fur-all.myshopify.com",
+      "capabilities": [
+        "dev.ucp.shopping.business",
+        "dev.ucp.shopping.business.ask"
+      ]
+    }
+  ],
+  "payment_handlers": {}
+}
