@@ -1,9 +1,5 @@
 {
   "ucp": {
-    "version": "2026-08-25",
-    "capabilities": {
-      "dev.ucp.shopping": [],
-      "dev.ucp.common": []
-    }
+    "version": "2026-08-25"
   }
 }
