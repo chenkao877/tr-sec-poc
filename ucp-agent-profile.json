@@ -1,0 +1,14 @@
+{
+  "name": "SecurityResearchAgent",
+  "version": "1.0.0",
+  "description": "Authorized security research agent",
+  "ucp": {
+    "version": "2026-08-25",
+    "agent_id": "sec-research-agent-1",
+    "capabilities": [
+      "dev.ucp.shopping",
+      "dev.ucp.common"
+    ],
+    "contact": "security@research.example"
+  }
+}
