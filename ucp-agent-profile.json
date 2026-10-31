@@ -1,9 +1,6 @@
 {
   "ucp": {
     "version": "2026-08-25",
-    "capabilities": {
-      "shopping": true,
-      "common": true
-    }
+    "name": "SecurityResearchAgent"
   }
 }
